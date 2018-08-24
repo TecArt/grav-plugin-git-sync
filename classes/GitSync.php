@@ -18,11 +18,11 @@ class GitSync extends Git
 
     public function __construct(Plugin $plugin = null)
     {
-        parent::__construct(USER_DIR);
+        parent::__construct(PAGES_DIR . '/');
         static::$instance = $this;
         $this->grav = Grav::instance();
         $this->config = $this->grav['config']->get('plugins.git-sync');
-        $this->repositoryPath = USER_DIR;
+        $this->repositoryPath = PAGES_DIR . '/';
 
         $this->user = isset($this->config['user']) ? $this->config['user'] : null;
         $this->password = isset($this->config['password']) ? $this->config['password'] : null;
@@ -86,7 +86,6 @@ class GitSync extends Git
     {
         if ($force || !Helper::isGitInitialized()) {
             $this->execute('init');
-            return $this->enableSparseCheckout();
         }
 
         return true;
@@ -124,31 +123,6 @@ class GitSync extends Git
         return true;
     }
 
-    public function enableSparseCheckout()
-    {
-        $folders = $this->config['folders'];
-        $this->execute("config core.sparsecheckout true");
-
-        $sparse = [];
-        foreach ($folders as $folder) {
-            $sparse[] = $folder . '/';
-            $sparse[] = $folder . '/*';
-        }
-
-        $file = File::instance(rtrim(USER_DIR, '/') . '/.git/info/sparse-checkout');
-        $file->save(implode("\r\n", $sparse));
-        $file->free();
-
-        $ignore = ['/*'];
-        foreach ($folders as $folder) {
-            $ignore[] = '!/' . $folder;
-        }
-
-        $file = File::instance(rtrim(USER_DIR, '/') . '/.gitignore');
-        $file->save(implode("\r\n", $ignore));
-        $file->free();
-    }
-
     public function addRemote($alias = null, $url = null, $authenticated = false)
     {
         $alias = $this->getRemote('name', $alias);
@@ -165,26 +139,19 @@ class GitSync extends Git
         return $this->execute("remote ${command} ${alias} \"${url}\"");
     }
 
-    public function add()
+    public function add($path)
     {
         $version = Helper::isGitInstalled(true);
-        $folders = $this->config['folders'];
-        $paths = [];
-        $add = 'add';
+        $files = isset($path) ? '$(find ' . $path . ' -maxdepth 1 -type f | tr "\n" " ")' : '--all';
+        $add = 'add ' . $files;
 
-        foreach ($folders as $folder) {
-            $paths[] = $folder;
-        }
-
-        if (version_compare($version, '2.0', '<')) {
-            $add .= ' --all';
-        }
-
-        return $this->execute($add . ' ' . implode(' ', $paths));
+        return $this->execute($add);
     }
 
     public function commit($message = '(Grav GitSync) Automatic Commit')
     {
+        $twig = $this->grav['twig'];
+
         $authorType = $this->getGitConfig('author', 'gituser');
         if (defined('GRAV_CLI') && in_array($authorType, ['gravuser', 'gravfull'])) {
             $authorType = 'gituser';
@@ -193,23 +160,30 @@ class GitSync extends Git
         switch ($authorType) {
             case 'gitsync':
                 $user = $this->getConfig('git', null)['name'];
+                $email = $this->getConfig('git', null)['email'];
                 break;
             case 'gravuser':
                 $user = $this->grav['session']->user->username;
+                $email = $this->grav['session']->user->email;
                 break;
             case 'gravfull':
                 $user = $this->grav['session']->user->fullname;
+                $email = $this->grav['session']->user->email;
                 break;
             case 'gituser':
             default:
                 $user = $this->user;
+                $email = $this->getConfig('git', null)['email'];
                 break;
         }
 
-        $author = $user . ' <' . $this->getConfig('git', null)['email'] . '>';
+        $author = $user . ' <' . $email . '>';
         $author = '--author="' . $author . '"';
-        $message .= ' from ' . $user;
-        $this->add();
+        $message = isset($twig->commit_message) ? $twig->commit_message : $message;
+        $path = isset($twig->commit_path) ? $twig->commit_path : null;
+
+        $this->add($path);
+
         return $this->execute("commit " . $author . " -m " . escapeshellarg($message));
     }
 

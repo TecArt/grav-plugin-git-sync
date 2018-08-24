@@ -223,30 +223,26 @@ class GitSyncPlugin extends Plugin
     {
         $obj           = $event['object'];
         $isPluginRoute = $this->grav['uri']->path() == '/admin/plugins/' . $this->name;
+        $transition    = isset($this->grav['twig']->taw_transition) ? $this->grav['twig']->taw_transition : null;
 
-        /*
-        $folders = $this->controller->git->getConfig('folders', []);
-        if (!$isPluginRoute && !in_array('config', $folders)) {
-            return true;
-        }
-        */
+        if (!isset($transition) or $transition === 'publish' or $transition === 'commit') {
+            if ($obj instanceof Data) {
+                if (!$isPluginRoute || !Helper::isGitInstalled()) {
+                    return true;
+                } else {
+                    $this->controller->git->setConfig($obj);
 
-        if ($obj instanceof Data) {
-            if (!$isPluginRoute || !Helper::isGitInstalled()) {
-                return true;
-            } else {
-                $this->controller->git->setConfig($obj);
+                    // initialize git if not done yet
+                    $this->controller->git->initializeRepository();
 
-                // initialize git if not done yet
-                $this->controller->git->initializeRepository();
-
-                // set committer and remote data
-                $this->controller->git->setUser();
-                $this->controller->git->addRemote();
+                    // set committer and remote data
+                    $this->controller->git->setUser();
+                    $this->controller->git->addRemote();
+                }
             }
+            
+            $this->synchronize();
         }
-
-        $this->synchronize();
 
         return true;
     }
