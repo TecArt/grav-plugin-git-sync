@@ -223,7 +223,7 @@ class GitSyncPlugin extends Plugin
     {
         $obj           = $event['object'];
         $isPluginRoute = $this->grav['uri']->path() == '/admin/plugins/' . $this->name;
-        $transition    = isset($this->grav['twig']->taw_transition) ? $this->grav['twig']->taw_transition : null;
+        $transition    = isset($this->grav['twig']->transition) ? $this->grav['twig']->transition : null;
 
         if (!isset($transition) or $transition === 'publish' or $transition === 'commit') {
             if ($obj instanceof Data) {
